@@ -76,6 +76,20 @@ app.use('/api/products', productRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/orders', orderRoutes);
 
+// Root route
+app.get('/', (req, res) => {
+  res.status(200).json({
+    message: 'Welcome to the Jewelry Hub API',
+    documentation: 'Please use the /api/ endpoints to interact with the API',
+    healthCheck: '/api/health',
+    status: 'running',
+    timestamp: new Date().toISOString()
+  });
+});
+
+// Handle favicon.ico requests
+app.get('/favicon.ico', (req, res) => res.status(204).end());
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ message: 'Server is running', timestamp: new Date().toISOString() });

@@ -1,6 +1,6 @@
 import express from 'express';
 import { body } from 'express-validator';
-import { register, login, getProfile, updateProfile } from '../controllers/authController.js';
+import { register, login, getProfile, updateProfile, checkAuthStatus } from '../controllers/authController.js';
 import { protect } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -21,6 +21,9 @@ router.post('/login', [
 
 // Get user profile
 router.get('/profile', protect, getProfile);
+
+// Check authentication status
+router.get('/check', protect, checkAuthStatus);
 
 // Update user profile
 router.put('/profile', protect, [

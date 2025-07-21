@@ -44,6 +44,7 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:5173',
+  'https://jewelry-hub.vercel.app',  // Add your Vercel URL here
   process.env.FRONTEND_URL
 ].filter(Boolean);
 

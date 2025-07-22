@@ -1,4 +1,5 @@
 import { validationResult } from 'express-validator';
+import mongoose from 'mongoose';
 import Product from '../models/Product.js';
 import Category from '../models/Category.js';
 
@@ -79,37 +80,41 @@ export const getProducts = async (req, res) => {
     }
 
     // Sorting
-    let sortBy = {};
+    let sortBy = { createdAt: -1 }; // Default sort by newest
     const validSortOptions = ['price_asc', 'price_desc', 'newest', 'popular'];
     
-    if (req.query.sortBy) {
-      if (!validSortOptions.includes(req.query.sortBy)) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid sortBy parameter',
-          validOptions: validSortOptions,
-          received: req.query.sortBy
-        });
+    try {
+      if (req.query.sortBy) {
+        if (!validSortOptions.includes(req.query.sortBy)) {
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid sortBy parameter',
+            validOptions: validSortOptions,
+            received: req.query.sortBy
+          });
+        }
+        
+        sortBy = {}; // Reset sortBy object
+        
+        switch (req.query.sortBy) {
+          case 'price_asc':
+            sortBy.price = 1;
+            break;
+          case 'price_desc':
+            sortBy.price = -1;
+            break;
+          case 'newest':
+            sortBy.createdAt = -1;
+            break;
+          case 'popular':
+            sortBy.sales = -1;
+            break;
+        }
       }
-      
-      switch (req.query.sortBy) {
-        case 'price_asc':
-          sortBy.price = 1;
-          break;
-        case 'price_desc':
-          sortBy.price = -1;
-          break;
-        case 'newest':
-          sortBy.createdAt = -1;
-          break;
-        case 'popular':
-          sortBy.sales = -1;
-          break;
-        default:
-          sortBy.createdAt = -1;
-      }
-    } else {
-      sortBy.createdAt = -1;
+    } catch (error) {
+      console.error('Sorting error:', error);
+      // Continue with default sort if there's an error
+      sortBy = { createdAt: -1 };
     }
 
     const products = await Product.find(filter)

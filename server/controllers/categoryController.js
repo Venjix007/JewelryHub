@@ -1,4 +1,5 @@
 import { validationResult } from 'express-validator';
+import mongoose from 'mongoose';
 import Category from '../models/Category.js';
 
 export const getCategories = async (req, res) => {

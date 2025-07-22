@@ -3,17 +3,41 @@ import Category from '../models/Category.js';
 
 export const getCategories = async (req, res) => {
   try {
+    console.log('Fetching categories...');
+    
+    // Test database connection
+    const db = mongoose.connection;
+    if (db.readyState !== 1) {
+      console.error('MongoDB connection not ready. State:', db.readyState);
+      return res.status(500).json({ 
+        success: false,
+        message: 'Database connection not established',
+        dbState: db.readyState
+      });
+    }
+
     const categories = await Category.find({ isActive: true })
       .populate('children', 'name')
-      .sort({ sortOrder: 1, name: 1 });
+      .sort({ sortOrder: 1, name: 1 })
+      .lean(); // Convert to plain JavaScript objects
 
+    console.log(`Found ${categories.length} categories`);
+    
     res.json({
       success: true,
       categories,
     });
   } catch (error) {
     console.error('Get categories error:', error);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error stack:', error.stack);
+    
+    // More detailed error response
+    res.status(500).json({ 
+      success: false,
+      message: 'Server error while fetching categories',
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error',
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
   }
 };
 

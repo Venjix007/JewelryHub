@@ -28,28 +28,17 @@ const app = express();
 // Security middleware
 app.use(helmet());
 
-// Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-  message: 'Too many requests from this IP, please try again later.',
-});
-app.use('/api/', limiter);
-
-// Body parser middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// CORS middleware
+// CORS configuration
 const allowedOrigins = [
+  'https://jewelry-ewqbvhyub-abhays-projects-5c930c24.vercel.app',
+  'https://jewelry-hub.vercel.app',
   'http://localhost:3000',
   'http://localhost:5173',
-  'https://jewelry-hub.vercel.app',  // Add your Vercel URL here
   process.env.FRONTEND_URL
 ].filter(Boolean);
 
-app.use(cors({
-  origin: (origin, callback) => {
+const corsOptions = {
+  origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
@@ -63,18 +52,47 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-}));
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+  optionsSuccessStatus: 200 // Some legacy browsers choke on 204
+};
+
+// Apply CORS with the above options
+app.use(cors(corsOptions));
+
+// Handle preflight requests
+app.options('*', cors(corsOptions));
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again later.',
+});
+app.use('/api/', limiter);
+
+// Body parser middleware
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+
 
 // Static files
 app.use('/uploads', express.static(join(__dirname, 'uploads')));
 
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/products', productRoutes);
-app.use('/api/categories', categoryRoutes);
-app.use('/api/orders', orderRoutes);
+// Routes - Support both /api/ and non-prefixed routes
+const apiRoutes = [
+  { path: '/auth', router: authRoutes },
+  { path: '/users', router: userRoutes },
+  { path: '/products', router: productRoutes },
+  { path: '/categories', router: categoryRoutes },
+  { path: '/orders', router: orderRoutes }
+];
+
+// Apply routes with and without /api prefix
+apiRoutes.forEach(route => {
+  app.use(`/api${route.path}`, route.router);
+  app.use(route.path, route.router);
+});
 
 // Root route
 app.get('/', (req, res) => {
@@ -90,19 +108,76 @@ app.get('/', (req, res) => {
 // Handle favicon.ico requests
 app.get('/favicon.ico', (req, res) => res.status(204).end());
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ message: 'Server is running', timestamp: new Date().toISOString() });
+// Health check endpoint with database status
+app.get('/api/health', async (req, res) => {
+  const dbStatus = {
+    state: mongoose.connection.readyState,
+    stateName: ['disconnected', 'connected', 'connecting', 'disconnecting'][mongoose.connection.readyState],
+    dbName: mongoose.connection.db?.databaseName,
+    host: mongoose.connection.host,
+    port: mongoose.connection.port,
+    models: Object.keys(mongoose.connection.models)
+  };
+
+  const isDbConnected = mongoose.connection.readyState === 1;
+  const status = isDbConnected ? 200 : 503;
+  const health = {
+    status: isDbConnected ? 'healthy' : 'unhealthy',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    database: dbStatus,
+    environment: process.env.NODE_ENV || 'development',
+    memoryUsage: process.memoryUsage()
+  };
+
+  res.status(status).json(health);
 });
 
 // Error handling middleware
 app.use(notFound);
 app.use(errorHandler);
 
-// MongoDB connection
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('MongoDB connected'))
-  .catch(err => console.log('MongoDB connection error:', err));
+// MongoDB connection with enhanced error handling
+const connectDB = async () => {
+  try {
+    if (!process.env.MONGODB_URI) {
+      console.error('MONGODB_URI is not defined in environment variables');
+      process.exit(1);
+    }
+
+    console.log('Connecting to MongoDB...');
+    
+    const conn = await mongoose.connect(process.env.MONGODB_URI, {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+      serverSelectionTimeoutMS: 10000, // 10 seconds timeout
+      socketTimeoutMS: 45000, // 45 seconds timeout
+    });
+
+    console.log(`MongoDB Connected: ${conn.connection.host}`);
+    
+    // Log database events
+    mongoose.connection.on('connected', () => {
+      console.log('Mongoose connected to DB');
+    });
+
+    mongoose.connection.on('error', (err) => {
+      console.error('Mongoose connection error:', err);
+    });
+
+    mongoose.connection.on('disconnected', () => {
+      console.log('Mongoose disconnected from DB');
+    });
+    
+  } catch (error) {
+    console.error('MongoDB connection error:', error.message);
+    console.error('Full error:', error);
+    process.exit(1);
+  }
+};
+
+// Connect to MongoDB
+connectDB();
 
 const PORT = process.env.PORT || 5000;
 

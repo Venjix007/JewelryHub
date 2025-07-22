@@ -4,6 +4,19 @@ import Category from '../models/Category.js';
 
 export const getProducts = async (req, res) => {
   try {
+    console.log('Fetching products with query:', req.query);
+    
+    // Test database connection
+    const db = mongoose.connection;
+    if (db.readyState !== 1) {
+      console.error('MongoDB connection not ready. State:', db.readyState);
+      return res.status(500).json({ 
+        success: false,
+        message: 'Database connection not established',
+        dbState: db.readyState
+      });
+    }
+
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 12;
     const skip = (page - 1) * limit;
@@ -17,19 +30,68 @@ export const getProducts = async (req, res) => {
 
     // Category filter
     if (req.query.category) {
-      filter.category = req.query.category;
+      try {
+        // Verify category exists
+        const category = await Category.findById(req.query.category);
+        if (!category) {
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid category ID',
+            categoryId: req.query.category
+          });
+        }
+        filter.category = req.query.category;
+      } catch (error) {
+        console.error('Category lookup error:', error);
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid category ID format',
+          error: error.message
+        });
+      }
     }
 
     // Price range filter
     if (req.query.minPrice || req.query.maxPrice) {
       filter.price = {};
-      if (req.query.minPrice) filter.price.$gte = parseFloat(req.query.minPrice);
-      if (req.query.maxPrice) filter.price.$lte = parseFloat(req.query.maxPrice);
+      if (req.query.minPrice) {
+        const minPrice = parseFloat(req.query.minPrice);
+        if (isNaN(minPrice)) {
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid minPrice value',
+            value: req.query.minPrice
+          });
+        }
+        filter.price.$gte = minPrice;
+      }
+      if (req.query.maxPrice) {
+        const maxPrice = parseFloat(req.query.maxPrice);
+        if (isNaN(maxPrice)) {
+          return res.status(400).json({
+            success: false,
+            message: 'Invalid maxPrice value',
+            value: req.query.maxPrice
+          });
+        }
+        filter.price.$lte = maxPrice;
+      }
     }
 
     // Sorting
     let sortBy = {};
+    const validSortOptions = ['price_asc', 'price_desc', 'newest', 'popular'];
+    
     if (req.query.sortBy) {
+      if (!validSortOptions.includes(req.query.sortBy)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid sortBy parameter',
+          validOptions: validSortOptions,
+          received: req.query.sortBy
+        });
+      }
+      
       switch (req.query.sortBy) {
         case 'price_asc':
           sortBy.price = 1;
